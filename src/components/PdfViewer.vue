@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, shallowRef, watch, nextTick } from "vue";
+import { ref, onMounted, onUnmounted, shallowRef, watch } from "vue";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { readFile } from "@tauri-apps/plugin-fs";
@@ -22,8 +22,23 @@ const emit = defineEmits<{
 const pdfDoc = shallowRef<PDFDocumentProxy | null>(null);
 const currentPage = ref(1);
 const totalPages = ref(0);
-const canvasRef = ref<HTMLCanvasElement | null>(null);
-const textLayerRef = ref<HTMLDivElement | null>(null);
+const scale = ref(1.0);
+const liveCssScale = ref(1.0); // for live pinch-zoom transform
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4.0;
+const ZOOM_STEP = 0.25;
+
+const frontCanvasRef = ref<HTMLCanvasElement | null>(null);
+const frontTextLayerRef = ref<HTMLDivElement | null>(null);
+const backCanvasRef = ref<HTMLCanvasElement | null>(null);
+const backTextLayerRef = ref<HTMLDivElement | null>(null);
+
+// 'front' is the canvas currently visible to the user
+const activeCanvasName = ref<"front" | "back">("front");
+// z-index refs to manage stacking
+const frontZIndex = ref(2);
+const backZIndex = ref(1);
+
 const containerRef = ref<HTMLDivElement | null>(null);
 const pageWidth = ref(0);
 const pageHeight = ref(0);
@@ -32,15 +47,37 @@ const isRendering = ref(false);
 const selectedText = ref("");
 const isDefinitionDrawerOpen = ref(false);
 const wordForDefinition = ref<string | null>(null);
+const pageWrapperRef = ref<HTMLDivElement | null>(null);
+const isToolbarVisible = ref(true);
 
 let renderTask: any = null;
+let currentRenderingPage = 0;
 
 // =======================
 // PDF LOADING & RENDERING
 // =======================
-async function renderPage(pageNum: number) {
-    if (!pdfDoc.value || !canvasRef.value || !textLayerRef.value) return;
+async function renderPage(
+    pageNum: number,
+    canvas: HTMLCanvasElement,
+    textLayer: HTMLDivElement,
+) {
+    console.log("renderPage called with pageNum:", pageNum);
 
+    if (!pdfDoc.value) {
+        console.log("No pdfDoc");
+        return;
+    }
+    if (!containerRef.value) {
+        console.log("No containerRef");
+        return;
+    }
+
+    console.log(
+        "All refs present, container width:",
+        containerRef.value.clientWidth,
+    );
+
+    // Cancel any ongoing render
     if (renderTask) {
         try {
             renderTask.cancel();
@@ -48,99 +85,155 @@ async function renderPage(pageNum: number) {
         renderTask = null;
     }
 
+    // Track which page this render is for
+    const thisRenderPage = pageNum;
+    currentRenderingPage = thisRenderPage;
     isRendering.value = true;
 
-    const page: PDFPageProxy = await pdfDoc.value.getPage(pageNum);
-    const containerWidth = containerRef.value?.clientWidth ?? 800;
-    const viewport = page.getViewport({ scale: 1 });
-    const scale = containerWidth / viewport.width;
-    const scaledViewport = page.getViewport({ scale });
+    try {
+        const page: PDFPageProxy = await pdfDoc.value.getPage(pageNum);
+        console.log("Got page:", pageNum);
 
-    pageWidth.value = scaledViewport.width;
-    pageHeight.value = scaledViewport.height;
+        const scaledViewport = page.getViewport({ scale: scale.value });
 
-    const canvas = canvasRef.value;
-    const context = canvas!.getContext("2d")!;
-    const outputScale = window.devicePixelRatio || 1;
+        console.log(
+            "Calculated scale:",
+            scale,
+            "viewport:",
+            scaledViewport.width,
+            "x",
+            scaledViewport.height,
+        );
 
-    canvas!.width = Math.floor(scaledViewport.width * outputScale);
-    canvas!.height = Math.floor(scaledViewport.height * outputScale);
+        const newWidth = scaledViewport.width;
+        const newHeight = scaledViewport.height;
 
-    const transform =
-        outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
-
-    renderTask = page.render({
-        canvas: canvasRef.value,
-        canvasContext: context,
-        viewport: scaledViewport,
-        transform,
-    });
-
-    await renderTask.promise;
-    renderTask = null;
-
-    console.log("Page rendered");
-
-    // Setup text layer
-    const textLayer = textLayerRef.value;
-    textLayer.innerHTML = "";
-    textLayer.className = "textLayer";
-
-    // Render text content
-    const textContent = await page.getTextContent();
-
-    console.log("Text items:", textContent.items.length);
-
-    // Create text layer spans
-    textContent.items.forEach((item: any, _index: number) => {
-        if (!item.str) return;
-
-        const span = document.createElement("span");
-        span.textContent = item.str;
-
-        const tx = item.transform;
-        const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
-
-        span.style.position = "absolute";
-        span.style.left = `${tx[4] * scale}px`;
-        span.style.bottom = `${tx[5] * scale}px`;
-        span.style.fontSize = `${fontHeight * scale}px`;
-        span.style.fontFamily = item.fontName || "sans-serif";
-        span.style.whiteSpace = "pre";
-        span.style.color = "transparent";
-        span.style.userSelect = "text";
-        span.style.pointerEvents = "all";
-
-        // Handle justified text - if item has width, set it explicitly and adjust spacing
-        if (item.width && item.str.length > 1) {
-            const itemWidth = item.width * scale;
-            span.style.width = `${itemWidth}px`;
-            span.style.display = "inline-block";
-            span.style.textAlign = "justify";
-            span.style.textAlignLast = "justify";
+        const context = canvas.getContext("2d");
+        if (!context) {
+            console.log("No canvas context");
+            return { width: 0, height: 0 };
         }
 
-        textLayer.appendChild(span);
-    });
+        const outputScale = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(newWidth * outputScale);
+        canvas.height = Math.floor(newHeight * outputScale);
 
-    console.log("Text layer rendered");
-    handleNextPage();
-    handlePrevPage();
-    isRendering.value = false;
+        console.log("Canvas dimensions set:", canvas.width, "x", canvas.height);
+
+        const transform =
+            outputScale !== 1
+                ? [outputScale, 0, 0, outputScale, 0, 0]
+                : undefined;
+
+        renderTask = page.render({
+            canvasContext: context,
+            viewport: scaledViewport,
+            transform,
+        });
+
+        console.log("Starting render...");
+        await renderTask.promise;
+        renderTask = null;
+
+        console.log("Page rendered successfully!");
+
+        // Only update text layer if this render wasn't superseded
+        if (currentRenderingPage !== thisRenderPage) {
+            console.log("Render superseded, skipping text layer");
+            return;
+        }
+
+        // Setup text layer
+        textLayer.innerHTML = "";
+        textLayer.className = "textLayer";
+
+        // Render text content
+        const textContent = await page.getTextContent();
+        console.log("Text items:", textContent.items.length);
+
+        // Create text layer spans
+        textContent.items.forEach((item: any) => {
+            if (!item.str) return;
+
+            const span = document.createElement("span");
+            span.textContent = item.str;
+
+            const tx = item.transform;
+            const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+
+            span.style.position = "absolute";
+            span.style.left = `${tx[4] * scale.value}px`;
+            span.style.bottom = `${tx[5] * scale.value}px`;
+            span.style.fontSize = `${fontHeight * scale.value}px`;
+            span.style.fontFamily = item.fontName || "sans-serif";
+            span.style.whiteSpace = "pre";
+            span.style.color = "transparent";
+            span.style.userSelect = "text";
+            span.style.pointerEvents = "all";
+
+            if (item.width) {
+                span.style.width = `${item.width * scale.value}px`;
+                span.style.overflow = "visible";
+            }
+
+            textLayer.appendChild(span);
+        });
+
+        console.log(
+            "Text layer rendered, total spans:",
+            textLayer.children.length,
+        );
+
+        return { width: newWidth, height: newHeight };
+    } catch (error: any) {
+        if (error?.name !== "RenderingCancelledException") {
+            console.error("Error rendering page:", error);
+        }
+        return { width: 0, height: 0 };
+    } finally {
+        // Only set isRendering to false if this is still the current render
+        if (currentRenderingPage === thisRenderPage) {
+            isRendering.value = false;
+            console.log("isRendering set to false");
+        }
+    }
 }
 
 async function loadPDF() {
     if (!props.filePath) return;
     isLoading.value = true;
+    currentPage.value = 1;
 
     try {
+        console.log("Loading PDF:", props.filePath);
         const fileData = await readFile(props.filePath);
+        console.log("File loaded, size:", fileData.length);
+
         const loadingTask = getDocument({ data: fileData });
         pdfDoc.value = await loadingTask.promise;
         totalPages.value = pdfDoc.value.numPages;
-        currentPage.value = 1;
-        await nextTick();
-        await renderPage(1);
+
+        console.log("PDF loaded, pages:", totalPages.value);
+
+        // Wait for container to be ready
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        if (pdfDoc.value && containerRef.value) {
+            const page = await pdfDoc.value.getPage(1);
+            const containerWidth = containerRef.value.clientWidth;
+            const viewport = page.getViewport({ scale: 1 });
+            scale.value = containerWidth / viewport.width;
+        }
+
+        if (frontCanvasRef.value && frontTextLayerRef.value) {
+            const { width, height } = await renderPage(
+                1,
+                frontCanvasRef.value,
+                frontTextLayerRef.value,
+            );
+            pageWidth.value = width;
+            pageHeight.value = height;
+        }
     } catch (err) {
         console.error("PDF load error:", err);
     } finally {
@@ -151,22 +244,208 @@ async function loadPDF() {
 // =======================
 // PAGE CONTROLS
 // =======================
-function handleNextPage() {
-    if (currentPage.value < totalPages.value && !isRendering.value) {
+async function handleNextPage() {
+    if (currentPage.value < totalPages.value) {
         currentPage.value++;
-        renderPage(currentPage.value);
+        const canvas =
+            activeCanvasName.value === "front"
+                ? frontCanvasRef.value
+                : backCanvasRef.value;
+        const textLayer =
+            activeCanvasName.value === "front"
+                ? frontTextLayerRef.value
+                : backTextLayerRef.value;
+        if (canvas && textLayer) {
+            const { width, height } = await renderPage(
+                currentPage.value,
+                canvas,
+                textLayer,
+            );
+            pageWidth.value = width;
+            pageHeight.value = height;
+        }
     }
 }
 
-function handlePrevPage() {
-    if (currentPage.value > 1 && !isRendering.value) {
+async function handlePrevPage() {
+    if (currentPage.value > 1) {
         currentPage.value--;
-        renderPage(currentPage.value);
+        const canvas =
+            activeCanvasName.value === "front"
+                ? frontCanvasRef.value
+                : backCanvasRef.value;
+        const textLayer =
+            activeCanvasName.value === "front"
+                ? frontTextLayerRef.value
+                : backTextLayerRef.value;
+        if (canvas && textLayer) {
+            const { width, height } = await renderPage(
+                currentPage.value,
+                canvas,
+                textLayer,
+            );
+            pageWidth.value = width;
+            pageHeight.value = height;
+        }
     }
 }
 
 function handleBack() {
     emit("back");
+}
+
+function handleZoomIn() {
+    if (liveCssScale.value < MAX_ZOOM) {
+        liveCssScale.value = Math.min(MAX_ZOOM, liveCssScale.value + ZOOM_STEP);
+
+        // Schedule re-render after button zoom
+        clearTimeout(zoomRenderTimeout);
+        zoomRenderTimeout = setTimeout(async () => {
+            if (pdfDoc.value && containerRef.value && !isRendering.value) {
+                // Determine front and back buffers
+                const backCanvas =
+                    activeCanvasName.value === "front"
+                        ? backCanvasRef.value
+                        : frontCanvasRef.value;
+                const backTextLayer =
+                    activeCanvasName.value === "front"
+                        ? backTextLayerRef.value
+                        : frontTextLayerRef.value;
+
+                if (!backCanvas || !backTextLayer) return;
+
+                // Save current scroll position
+                const container = containerRef.value;
+                const scrollLeft = container.scrollLeft;
+                const scrollTop = container.scrollTop;
+                const oldWidth = pageWidth.value * liveCssScale.value;
+                const oldHeight = pageHeight.value * liveCssScale.value;
+
+                const scrollXPercent =
+                    oldWidth > 0
+                        ? (scrollLeft + container.clientWidth / 2) / oldWidth
+                        : 0.5;
+                const scrollYPercent =
+                    oldHeight > 0
+                        ? (scrollTop + container.clientHeight / 2) / oldHeight
+                        : 0.5;
+
+                // Update base scale and re-render on the back buffer
+                scale.value = scale.value * liveCssScale.value;
+                const { width, height } = await renderPage(
+                    currentPage.value,
+                    backCanvas,
+                    backTextLayer,
+                );
+
+                // Swap buffers and update dimensions
+                activeCanvasName.value =
+                    activeCanvasName.value === "front" ? "back" : "front";
+                pageWidth.value = width;
+                pageHeight.value = height;
+                liveCssScale.value = 1.0; // Reset live scale
+
+                // Restore scroll position after render
+                await new Promise((resolve) => setTimeout(resolve, 50));
+
+                container.scrollLeft =
+                    scrollXPercent * width - container.clientWidth / 2;
+                container.scrollTop =
+                    scrollYPercent * height - container.clientHeight / 2;
+            }
+        }, 300);
+    }
+}
+
+function handleZoomOut() {
+    if (liveCssScale.value > MIN_ZOOM) {
+        liveCssScale.value = Math.max(
+            MIN_ZOOM,
+
+            liveCssScale.value - ZOOM_STEP,
+        );
+
+        // Schedule re-render after button zoom
+
+        clearTimeout(zoomRenderTimeout);
+
+        zoomRenderTimeout = setTimeout(async () => {
+            if (pdfDoc.value && containerRef.value && !isRendering.value) {
+                // Determine front and back buffers
+
+                const backCanvas =
+                    activeCanvasName.value === "front"
+                        ? backCanvasRef.value
+                        : frontCanvasRef.value;
+
+                const backTextLayer =
+                    activeCanvasName.value === "front"
+                        ? backTextLayerRef.value
+                        : frontTextLayerRef.value;
+
+                if (!backCanvas || !backTextLayer) return;
+
+                // Save current scroll position
+
+                const container = containerRef.value;
+
+                const scrollLeft = container.scrollLeft;
+
+                const scrollTop = container.scrollTop;
+
+                const oldWidth = pageWidth.value * liveCssScale.value;
+
+                const oldHeight = pageHeight.value * liveCssScale.value;
+
+                const scrollXPercent =
+                    oldWidth > 0
+                        ? (scrollLeft + container.clientWidth / 2) / oldWidth
+                        : 0.5;
+
+                const contentOffsetX =
+                    oldWidth < container.clientWidth
+                        ? (container.clientWidth - oldWidth) / 2
+                        : 0;
+                const scrollYPercent =
+                    oldHeight > 0
+                        ? (scrollTop + container.clientHeight / 2) / oldHeight
+                        : 0.5;
+
+                // Update base scale and re-render on the back buffer
+
+                scale.value = scale.value * liveCssScale.value;
+
+                const { width, height } = await renderPage(
+                    currentPage.value,
+
+                    backCanvas,
+
+                    backTextLayer,
+                );
+
+                // Swap buffers and update dimensions
+
+                activeCanvasName.value =
+                    activeCanvasName.value === "front" ? "back" : "front";
+
+                pageWidth.value = width;
+
+                pageHeight.value = height;
+
+                liveCssScale.value = 1.0; // Reset live scale
+
+                // Restore scroll position after render
+
+                await new Promise((resolve) => setTimeout(resolve, 50));
+
+                container.scrollLeft =
+                    scrollXPercent * width - container.clientWidth / 2;
+
+                container.scrollTop =
+                    scrollYPercent * height - container.clientHeight / 2;
+            }
+        }, 300);
+    }
 }
 
 // =======================
@@ -180,13 +459,15 @@ function handleSelectionChange() {
 
     const text = selection.toString().trim();
 
+    const activeTextLayer =
+        activeCanvasName.value === "front"
+            ? frontTextLayerRef.value
+            : backTextLayerRef.value;
+
     // Only process if selection is within our text layer
-    if (text && textLayerRef.value) {
+    if (text && activeTextLayer) {
         const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-        if (
-            range &&
-            textLayerRef.value.contains(range.commonAncestorContainer)
-        ) {
+        if (range && activeTextLayer.contains(range.commonAncestorContainer)) {
             if (text !== lastSelection) {
                 lastSelection = text;
                 selectedText.value = text;
@@ -207,12 +488,7 @@ function handleSelectionChange() {
 // =======================
 // SHRINK/EXPAND SELECTION
 // =======================
-/**
- * Build a character-level index map for the textLayer.
- * Returns { fullText, map } where map[i] = { node: TextNode, offset: number }
- */
-function buildTextIndexMap() {
-    const textLayer = textLayerRef.value;
+function buildTextIndexMap(textLayer: HTMLDivElement | null) {
     if (!textLayer)
         return {
             fullText: "",
@@ -222,9 +498,7 @@ function buildTextIndexMap() {
     let fullText = "";
     const map: Array<{ node: Node; offset: number }> = [];
 
-    // iterate child spans in DOM order (pdf.js creates spans in reading order)
     for (const spanEl of Array.from(textLayer.children)) {
-        // prefer the span's text node if present
         const textNode =
             spanEl.firstChild && spanEl.firstChild.nodeType === Node.TEXT_NODE
                 ? (spanEl.firstChild as Node)
@@ -234,13 +508,11 @@ function buildTextIndexMap() {
         if (!spanText) continue;
 
         if (textNode) {
-            // map each character to the text node + local offset
             for (let i = 0; i < spanText.length; i++) {
                 map.push({ node: textNode, offset: i });
                 fullText += spanText[i];
             }
         } else {
-            // fallback: map character to the span element itself (less ideal)
             for (let i = 0; i < spanText.length; i++) {
                 map.push({ node: spanEl, offset: i });
                 fullText += spanText[i];
@@ -251,11 +523,6 @@ function buildTextIndexMap() {
     return { fullText, map };
 }
 
-/**
- * Attempt to compute global start/end indices for the current DOM selection.
- * Returns { startIdx, endIdx } where endIdx is exclusive.
- * If it fails to find an exact mapping, falls back to text search of selection string.
- */
 function getSelectionGlobalIndices(): {
     startIdx: number;
     endIdx: number;
@@ -264,11 +531,14 @@ function getSelectionGlobalIndices(): {
     if (!sel || sel.rangeCount === 0) return null;
 
     const range = sel.getRangeAt(0);
-    const { map, fullText } = buildTextIndexMap();
+    const activeTextLayer =
+        activeCanvasName.value === "front"
+            ? frontTextLayerRef.value
+            : backTextLayerRef.value;
+    const { map, fullText } = buildTextIndexMap(activeTextLayer);
 
     if (!map.length) return null;
 
-    // normalize nodes to text nodes if they are element wrappers
     const normalizeNode = (node: Node) => {
         if (
             node.nodeType === Node.ELEMENT_NODE &&
@@ -285,7 +555,6 @@ function getSelectionGlobalIndices(): {
     const sOffset = range.startOffset;
     const eOffset = range.endOffset;
 
-    // Try to find indices by matching node + offset in map
     let startIdx = -1;
     let endIdx = -1;
 
@@ -297,9 +566,6 @@ function getSelectionGlobalIndices(): {
         }
     }
 
-    // For end, if selection ends at an exact char boundary, find the first map index *after*
-    // the last selected character. We try to find the first map index where node===eNode && offset===eOffset,
-    // which corresponds to the next character position (i.e., exclusive end).
     for (let i = 0; i < map.length; i++) {
         const entry = map[i];
         if (entry.node === eNode && entry.offset === eOffset) {
@@ -308,10 +574,8 @@ function getSelectionGlobalIndices(): {
         }
     }
 
-    // If we found both start and end indices, return them
     if (startIdx !== -1 && endIdx !== -1) return { startIdx, endIdx };
 
-    // fallback: locate selection string in fullText
     const selText = sel.toString();
     if (!selText) return null;
 
@@ -320,23 +584,21 @@ function getSelectionGlobalIndices(): {
         return { startIdx: idx, endIdx: idx + selText.length };
     }
 
-    // last resort: try approximate search (first occurrence)
     return null;
 }
 
-/**
- * Set DOM selection (Range) using global character indices (start inclusive, end exclusive).
- */
 function setSelectionFromGlobalIndices(startIdx: number, endIdx: number) {
-    const { map } = buildTextIndexMap();
+    const activeTextLayer =
+        activeCanvasName.value === "front"
+            ? frontTextLayerRef.value
+            : backTextLayerRef.value;
+    const { map } = buildTextIndexMap(activeTextLayer);
     if (!map.length) return;
 
-    // clamp
     const s = Math.max(0, Math.min(startIdx, map.length));
     const e = Math.max(0, Math.min(endIdx, map.length));
 
     if (s >= e) {
-        // clear selection
         const sel = window.getSelection();
         if (sel) sel.removeAllRanges();
         lastSelection = "";
@@ -345,7 +607,6 @@ function setSelectionFromGlobalIndices(startIdx: number, endIdx: number) {
         return;
     }
 
-    // Compute start node & offset
     const startEntry = map[s];
     const startNode =
         startEntry.node.nodeType === Node.ELEMENT_NODE &&
@@ -354,8 +615,6 @@ function setSelectionFromGlobalIndices(startIdx: number, endIdx: number) {
             : startEntry.node;
     const startOffset = startEntry.offset;
 
-    // Compute end as exclusive position: if e < map.length, use map[e] (start of next char),
-    // otherwise set to last char's node offset + 1
     let endNode: Node;
     let endOffset: number;
 
@@ -403,20 +662,15 @@ function setSelectionFromGlobalIndices(startIdx: number, endIdx: number) {
     }
 }
 
-/**
- * Adjust selection using global indices.
- * delta < 0 : shrink selection FROM START (move start forward by |delta| chars)
- * delta > 0 : expand selection AT END (move end forward by delta chars)
- */
 function adjustSelection(delta: number) {
     const indices = getSelectionGlobalIndices();
     if (!indices) return;
 
     let { startIdx, endIdx } = indices;
-
     const { fullText } = buildTextIndexMap();
+
     if (delta < 0) {
-        endIdx = Math.min(endIdx + delta, fullText.length);
+        endIdx = Math.max(startIdx + 1, endIdx + delta);
     } else {
         endIdx = Math.min(endIdx + delta, fullText.length);
     }
@@ -438,16 +692,284 @@ function handleLookupSelection() {
     window.getSelection()?.removeAllRanges();
 }
 
+function toggleToolbar() {
+    isToolbarVisible.value = !isToolbarVisible.value;
+}
+
+function handlePageClick(event: MouseEvent) {
+    const activeTextLayer =
+        activeCanvasName.value === "front"
+            ? frontTextLayerRef.value
+            : backTextLayerRef.value;
+    if (activeTextLayer && activeTextLayer.contains(event.target as Node)) {
+        return;
+    }
+
+    const container = pageWrapperRef.value;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const containerWidth = rect.width; // Use actual rendered width (with zoom applied)
+
+    const deadZonePercentage = 0.3;
+    const sideWidth = (containerWidth * (1 - deadZonePercentage)) / 2;
+
+    const isPaginationToolbarActive = !selectedText.value;
+
+    if (isPaginationToolbarActive) {
+        if (clickX < sideWidth) {
+            handlePrevPage();
+        } else if (clickX > containerWidth - sideWidth) {
+            handleNextPage();
+        } else {
+            toggleToolbar();
+        }
+    }
+}
+
+let resizeTimeout: any = null;
+async function handleResize() {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(async () => {
+        if (pdfDoc.value && !isRendering.value && containerRef.value) {
+            const page = await pdfDoc.value.getPage(currentPage.value);
+            const containerWidth = containerRef.value.clientWidth;
+            const viewport = page.getViewport({ scale: 1 });
+            scale.value = containerWidth / viewport.width;
+
+            const canvas =
+                activeCanvasName.value === "front"
+                    ? frontCanvasRef.value
+                    : backCanvasRef.value;
+            const textLayer =
+                activeCanvasName.value === "front"
+                    ? frontTextLayerRef.value
+                    : backTextLayerRef.value;
+            if (canvas && textLayer) {
+                const { width, height } = await renderPage(
+                    currentPage.value,
+                    canvas,
+                    textLayer,
+                );
+                pageWidth.value = width;
+                pageHeight.value = height;
+            }
+        }
+    }, 300);
+}
+
+// =======================
+// PINCH TO ZOOM
+// =======================
+let initialPinchDistance = 0;
+let initialZoom = 1.0;
+let zoomRenderTimeout: any = null;
+
+function getTouchDistance(touch1: Touch, touch2: Touch): number {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function handleTouchStart(event: TouchEvent) {
+    if (event.touches.length === 2) {
+        event.preventDefault();
+        initialPinchDistance = getTouchDistance(
+            event.touches[0],
+            event.touches[1],
+        );
+        initialZoom = liveCssScale.value;
+
+        // Clear any pending render
+        clearTimeout(zoomRenderTimeout);
+    }
+}
+
+function handleTouchMove(event: TouchEvent) {
+    if (event.touches.length === 2) {
+        event.preventDefault();
+        const currentDistance = getTouchDistance(
+            event.touches[0],
+            event.touches[1],
+        );
+        const scale = currentDistance / initialPinchDistance;
+        const newZoom = Math.max(
+            MIN_ZOOM,
+            Math.min(MAX_ZOOM, initialZoom * scale),
+        );
+        liveCssScale.value = newZoom;
+
+        // Clear any pending render while still zooming
+        clearTimeout(zoomRenderTimeout);
+    }
+}
+
+function handleTouchEnd(event: TouchEvent) {
+    if (event.touches.length < 2) {
+        initialPinchDistance = 0;
+
+        // User finished zooming, schedule a re-render
+        clearTimeout(zoomRenderTimeout);
+        zoomRenderTimeout = setTimeout(async () => {
+            if (pdfDoc.value && containerRef.value && !isRendering.value) {
+                // The canvas that was just zoomed via CSS
+                const frontCanvas =
+                    activeCanvasName.value === "front"
+                        ? frontCanvasRef.value
+                        : backCanvasRef.value;
+                // The canvas we will render on
+                const backCanvas =
+                    activeCanvasName.value === "front"
+                        ? backCanvasRef.value
+                        : frontCanvasRef.value;
+                const backTextLayer =
+                    activeCanvasName.value === "front"
+                        ? backTextLayerRef.value
+                        : frontTextLayerRef.value;
+
+                if (!frontCanvas || !backCanvas || !backTextLayer) return;
+
+                // Center the scaled canvas. The transform-origin: center takes care of this.
+                // The user mentioned centering it, let's ensure scroll position is maintained.
+                const container = containerRef.value;
+                const scrollLeft = container.scrollLeft;
+                const scrollTop = container.scrollTop;
+                const oldWidth = pageWidth.value * liveCssScale.value;
+                const oldHeight = pageHeight.value * liveCssScale.value;
+
+                const scrollXPercent =
+                    oldWidth > 0
+                        ? (scrollLeft + container.clientWidth / 2) / oldWidth
+                        : 0.5;
+                const scrollYPercent =
+                    oldHeight > 0
+                        ? (scrollTop + container.clientHeight / 2) / oldHeight
+                        : 0.5;
+
+                // Update base scale to incorporate the new zoom level
+                const zoomToApply = liveCssScale.value;
+                scale.value = scale.value * zoomToApply;
+
+                // Re-render on the back buffer
+                const { width, height } = await renderPage(
+                    currentPage.value,
+                    backCanvas,
+                    backTextLayer,
+                );
+
+                // --- SWAP BUFFERS ---
+                // 1. Switch visibility
+                const newActive =
+                    activeCanvasName.value === "front" ? "back" : "front";
+                activeCanvasName.value = newActive;
+
+                // 2. Update dimensions
+                pageWidth.value = width;
+                pageHeight.value = height;
+
+                // 3. After 10ms, switch z-indices
+                setTimeout(() => {
+                    if (newActive === "front") {
+                        frontZIndex.value = 2;
+                        backZIndex.value = 1;
+                    } else {
+                        frontZIndex.value = 1;
+                        backZIndex.value = 2;
+                    }
+                }, 10);
+
+                // Reset the live CSS scale for the new front buffer
+                liveCssScale.value = 1.0;
+
+                // Restore scroll position for the newly rendered canvas
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                container.scrollLeft =
+                    scrollXPercent * width - container.clientWidth / 2;
+                container.scrollTop =
+                    scrollYPercent * height - container.clientHeight / 2;
+            }
+        }, 100); // Reduced delay for faster re-render after pinch
+    }
+}
+
 onMounted(() => {
+    window.addEventListener("resize", handleResize);
     document.addEventListener("selectionchange", handleSelectionChange);
+
+    // Prevent browser zoom completely
+    const preventZoom = (e: WheelEvent | TouchEvent) => {
+        if (e instanceof WheelEvent && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+        }
+        // Prevent pinch zoom
+        if (e instanceof TouchEvent && e.touches.length > 1) {
+            e.preventDefault();
+        }
+    };
+
+    document.addEventListener("wheel", preventZoom, { passive: false });
+    document.addEventListener("touchmove", preventZoom, { passive: false });
+
+    // Add touch handlers to container for pinch zoom
+    const container = containerRef.value;
+    if (container) {
+        container.addEventListener("touchstart", handleTouchStart, {
+            passive: false,
+        });
+        container.addEventListener("touchmove", handleTouchMove, {
+            passive: false,
+        });
+        container.addEventListener("touchend", handleTouchEnd, {
+            passive: false,
+        });
+    }
+
+    // Prevent iOS Safari zoom
+    document.addEventListener(
+        "gesturestart",
+        (e) => {
+            e.preventDefault();
+        },
+        { passive: false },
+    );
+
     loadPDF();
 });
 
 onUnmounted(() => {
+    window.removeEventListener("resize", handleResize);
     document.removeEventListener("selectionchange", handleSelectionChange);
+
+    const preventZoom = (e: WheelEvent | TouchEvent) => {
+        if (e instanceof WheelEvent && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+        }
+        if (e instanceof TouchEvent && e.touches.length > 1) {
+            e.preventDefault();
+        }
+    };
+
+    document.removeEventListener("wheel", preventZoom);
+    document.removeEventListener("touchmove", preventZoom);
+    document.removeEventListener("gesturestart", (e) => {
+        e.preventDefault();
+    });
+
+    const container = containerRef.value;
+    if (container) {
+        container.removeEventListener("touchstart", handleTouchStart);
+        container.removeEventListener("touchmove", handleTouchMove);
+        container.removeEventListener("touchend", handleTouchEnd);
+    }
+
+    if (renderTask) {
+        renderTask.cancel();
+    }
+    clearTimeout(resizeTimeout);
+    clearTimeout(zoomRenderTimeout);
 });
 
-// Watch for file changes
 watch(
     () => props.filePath,
     () => {
@@ -455,17 +977,25 @@ watch(
         loadPDF();
     },
 );
+
+watch(selectedText, (newVal) => {
+    if (newVal) {
+        isToolbarVisible.value = true;
+    }
+});
 </script>
 
 <template>
-    <div class="flex flex-col h-screen w-screen bg-gray-100">
+    <div
+        class="relative flex flex-col h-screen w-screen bg-gray-100 overflow-hidden"
+    >
         <div
             ref="containerRef"
             class="flex-1 overflow-auto bg-white flex items-center justify-center"
         >
             <div
                 v-if="isLoading"
-                class="flex flex-col items-center justify-center h-full text-gray-600"
+                class="absolute inset-0 flex flex-col items-center justify-center text-gray-600 bg-white z-10"
             >
                 <div
                     class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"
@@ -473,30 +1003,80 @@ watch(
                 <p class="mt-4">Loading PDF...</p>
             </div>
             <div
-                v-else
-                class="relative bg-white"
+                ref="pageWrapperRef"
+                class="touch-none fixed w-full h-screen bg-white"
                 :style="{
                     width: pageWidth ? `${pageWidth}px` : '100%',
                     height: pageHeight ? `${pageHeight}px` : 'auto',
+                    visibility: isLoading ? 'hidden' : 'visible',
                 }"
+                @click="handlePageClick"
             >
+                <!-- Front Buffer -->
                 <canvas
-                    ref="canvasRef"
+                    ref="frontCanvasRef"
+                    class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                    :style="{
+                        width: pageWidth ? `${pageWidth}px` : '100%',
+                        height: pageHeight ? `${pageHeight}px` : 'auto',
+                        visibility:
+                            activeCanvasName === 'front' ? 'visible' : 'hidden',
+                        zIndex: frontZIndex,
+                        transform:
+                            activeCanvasName === 'front'
+                                ? `scale(${liveCssScale})`
+                                : 'none',
+                        transformOrigin: 'center center',
+                    }"
+                ></canvas>
+                <div
+                    ref="frontTextLayerRef"
+                    class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 textLayer"
+                    :style="{
+                        width: pageWidth ? `${pageWidth}px` : '100%',
+                        height: pageHeight ? `${pageHeight}px` : 'auto',
+                        visibility:
+                            activeCanvasName === 'front' ? 'visible' : 'hidden',
+                        zIndex: frontZIndex,
+                        transform:
+                            activeCanvasName === 'front'
+                                ? `scale(${liveCssScale})`
+                                : 'none',
+                        transformOrigin: 'center center',
+                    }"
+                ></div>
+
+                <!-- Back Buffer -->
+                <canvas
+                    ref="backCanvasRef"
                     class="absolute top-0 left-0"
                     :style="{
                         width: pageWidth ? `${pageWidth}px` : '100%',
                         height: pageHeight ? `${pageHeight}px` : 'auto',
+                        visibility:
+                            activeCanvasName === 'back' ? 'visible' : 'hidden',
+                        zIndex: backZIndex,
+                        transform:
+                            activeCanvasName === 'back'
+                                ? `scale(${liveCssScale})`
+                                : 'none',
+                        transformOrigin: 'center center',
                     }"
                 ></canvas>
                 <div
-                    ref="textLayerRef"
+                    ref="backTextLayerRef"
                     class="absolute top-0 left-0 textLayer"
                     :style="{
                         width: pageWidth ? `${pageWidth}px` : '100%',
                         height: pageHeight ? `${pageHeight}px` : 'auto',
-                        userSelect: 'text',
-                        WebkitUserSelect: 'text',
-                        pointerEvents: 'auto',
+                        visibility:
+                            activeCanvasName === 'back' ? 'visible' : 'hidden',
+                        zIndex: backZIndex,
+                        transform:
+                            activeCanvasName === 'back'
+                                ? `scale(${liveCssScale})`
+                                : 'none',
+                        transformOrigin: 'center center',
                     }"
                 ></div>
             </div>
@@ -507,12 +1087,20 @@ watch(
             :is-rendering="isRendering"
             :is-loading="isLoading"
             :selected-text="selectedText"
+            :scale="liveCssScale"
+            class="transition-transform duration-300 ease-in-out"
+            :class="{
+                'translate-y-full landscape:translate-y-[calc(100%+1rem)]':
+                    !isToolbarVisible,
+            }"
             @back="handleBack"
             @next-page="handleNextPage"
             @prev-page="handlePrevPage"
             @shrink-selection="handleShrinkSelection"
             @expand-selection="handleExpandSelection"
             @lookup-selection="handleLookupSelection"
+            @zoom-in="handleZoomIn"
+            @zoom-out="handleZoomOut"
         />
         <DefinitionDrawer
             v-model:open="isDefinitionDrawerOpen"
@@ -525,10 +1113,21 @@ watch(
 .textLayer span {
     user-select: text !important;
     color: transparent;
+    letter-spacing: normal !important;
 }
 
 .textLayer span::selection {
     background: rgba(0, 123, 255, 0.3);
     color: transparent;
+}
+
+.textLayer span::-moz-selection {
+    background: rgba(0, 123, 255, 0.3);
+    color: transparent;
+}
+
+/* Override pdf_viewer.css letter-spacing */
+:deep(.textLayer span) {
+    letter-spacing: normal !important;
 }
 </style>

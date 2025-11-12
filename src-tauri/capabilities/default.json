@@ -9,12 +9,24 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://api.cloudflare.com" },
-        { "url": "https://api.dictionaryapi.dev" }
+        {
+          "url": "https://api.cloudflare.com"
+        },
+        {
+          "url": "https://api.dictionaryapi.dev"
+        }
       ]
     },
-
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    "fs:allow-stat",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$DOCUMENT/**/*" },
+        { "path": "$PICTURE/**/*" },
+        { "path": "$DOWNLOAD/**/*" }
+      ]
+    }
   ]
 }

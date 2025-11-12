@@ -1,31 +1,80 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { Button } from "@/components/ui/button";
-import { open } from "@tauri-apps/plugin-dialog";
 import PdfViewer from "@/components/PdfViewer.vue";
+import Home from "@/components/Home.vue";
+import Recents from "@/components/Recents.vue";
+import { invoke } from "@tauri-apps/api/core";
+import { FilePlus } from "lucide-vue-next";
+
+const transitionName = ref("fade");
+
+interface FileInfo {
+    path: string;
+    uri: string;
+    file_type: string;
+    name: string;
+    lastOpened?: number;
+}
 
 const selectedFilePath = ref<string | null>(null);
 const showPdfViewer = ref(false);
+const showRecents = ref(false);
 
 async function selectFile() {
-    const selected = await open({
-        multiple: false,
-        filters: [
-            {
-                name: "PDF",
-                extensions: ["pdf"],
-            },
-        ],
-    });
-    if (typeof selected === "string") {
-        selectedFilePath.value = selected;
-        showPdfViewer.value = true;
+    transitionName.value = "slide-left";
+    try {
+        const fileInfo = await invoke<FileInfo>("pick_file_with_metdata");
+        if (fileInfo) {
+            await addFileToStore(fileInfo);
+            selectedFilePath.value = fileInfo.path;
+            showPdfViewer.value = true;
+        }
+    } catch (error) {
+        console.error("Failed to pick file with metadata:", error);
     }
 }
 
+async function openFile(fileInfo: FileInfo) {
+    transitionName.value = "slide-left";
+    await addFileToStore(fileInfo);
+    selectedFilePath.value = fileInfo.path;
+    showPdfViewer.value = true;
+}
+
+async function addFileToStore(fileInfo: FileInfo) {
+    const files = JSON.parse(
+        localStorage.getItem("recentFiles") || "[]",
+    ) as FileInfo[];
+
+    const now = Date.now();
+    const existingFileIndex = files.findIndex((f) => f.path === fileInfo.path);
+
+    if (existingFileIndex !== -1) {
+        files[existingFileIndex].lastOpened = now;
+        const updatedFile = files.splice(existingFileIndex, 1)[0];
+        files.unshift(updatedFile);
+    } else {
+        fileInfo.lastOpened = now;
+        files.unshift(fileInfo);
+    }
+    localStorage.setItem("recentFiles", JSON.stringify(files));
+}
+
 function goBack() {
+    transitionName.value = "slide-right";
     showPdfViewer.value = false;
     selectedFilePath.value = null;
+}
+
+function handleSeeMore() {
+    transitionName.value = "slide-left";
+    showRecents.value = true;
+}
+
+function handleRecentsBack() {
+    transitionName.value = "slide-right";
+    showRecents.value = false;
 }
 
 onMounted(() => {
@@ -34,15 +83,28 @@ onMounted(() => {
 </script>
 
 <template>
-    <div
-        :class="[
-            'w-full h-screen',
-            showPdfViewer ? '' : 'grid place-items-center',
-        ]"
-    >
-        <transition name="fade" mode="out-in">
-            <div v-if="!showPdfViewer" class="text-center">
-                <Button @click="selectFile">Select PDF</Button>
+    <div :class="['w-full h-screen', 'overflow-hidden']">
+        <transition :name="transitionName" mode="out-in">
+            <div
+                v-if="!showPdfViewer"
+                class="h-full relative flex justify-center"
+            >
+                <Home
+                    v-if="!showRecents"
+                    @open-file="openFile"
+                    @see-more="handleSeeMore"
+                />
+                <Recents
+                    v-else
+                    @open-file="openFile"
+                    @back="handleRecentsBack"
+                />
+                <Button
+                    @click="selectFile"
+                    class="fixed bottom-8 right-8 h-16 w-16 rounded-full shadow-lg"
+                >
+                    <FilePlus class="h-8 w-8" />
+                </Button>
             </div>
             <div v-else-if="selectedFilePath" class="w-full h-full">
                 <PdfViewer :file-path="selectedFilePath" @back="goBack" />
@@ -52,6 +114,33 @@ onMounted(() => {
 </template>
 
 <style>
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+    transition: all 0.3s ease-out;
+    position: absolute;
+    width: 100%;
+}
+
+.slide-left-enter-from {
+    transform: translateX(100%);
+    opacity: 0;
+}
+.slide-left-leave-to {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+
+.slide-right-enter-from {
+    transform: translateX(-100%);
+    opacity: 0;
+}
+.slide-right-leave-to {
+    transform: translateX(100%);
+    opacity: 0;
+}
+
 .fade-enter-active,
 .fade-leave-active {
     transition:
