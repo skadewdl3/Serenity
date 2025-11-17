@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-vue-next";
 import { useScreenOrientation } from "@vueuse/core";
+import emitter from "@/lib/events";
 
 const isOpen = defineModel<boolean>("open");
 
@@ -20,32 +21,17 @@ const props = defineProps<{
     maxScale: number;
 }>();
 
-const emit = defineEmits<{
-    (e: "zoom-in"): void;
-    (e: "zoom-out"): void;
-    (e: "reset-zoom"): void;
-}>();
-
 const { orientation } = useScreenOrientation();
 const isVertical = computed(
     () =>
         orientation.value == "portrait-primary" ||
         orientation.value == "portrait-secondary",
 );
-
-const localScale = computed({
-    get: () => props.scale,
-    set: (value) => emit("update:scale", value),
-});
 </script>
 
 <template>
     <Drawer v-model:open="isOpen">
-        <DrawerContent
-            :class="{
-                'max-w-calc(50vw_-_20px) ml-[50vw]': !isVertical,
-            }"
-        >
+        <DrawerContent>
             <div class="mx-auto w-full max-w-2xl">
                 <DrawerHeader>
                     <DrawerTitle>Options</DrawerTitle>
@@ -56,7 +42,7 @@ const localScale = computed({
                 <div class="p-4 space-y-4">
                     <div class="flex items-center gap-2">
                         <Button
-                            @click="$emit('zoom-out')"
+                            @click="emitter.emit('zoomOut')"
                             :disabled="scale <= minScale"
                             size="icon"
                             variant="outline"
@@ -64,13 +50,13 @@ const localScale = computed({
                             <ZoomOut class="h-4 w-4" />
                         </Button>
                         <Slider
-                            v-model="localScale"
+                            :model-value="[props.scale]"
                             :min="minScale"
                             :max="maxScale"
                             :step="0.1"
                         />
                         <Button
-                            @click="$emit('zoom-in')"
+                            @click="emitter.emit('zoomIn')"
                             :disabled="scale >= maxScale"
                             size="icon"
                             variant="outline"
@@ -79,7 +65,7 @@ const localScale = computed({
                         </Button>
                     </div>
                     <Button
-                        @click="$emit('reset-zoom')"
+                        @click="emitter.emit('resetZoom')"
                         variant="outline"
                         class="w-full"
                     >

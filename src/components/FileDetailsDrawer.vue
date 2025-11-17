@@ -79,12 +79,7 @@ const isVertical = computed(
 
 <template>
     <Drawer v-model:open="open">
-        <DrawerContent
-            v-if="file"
-            :class="{
-                'max-w-calc(50vw_-_20px) ml-[50vw]': !isVertical,
-            }"
-        >
+        <DrawerContent v-if="file">
             <DrawerHeader>
                 <DrawerTitle class="truncate text-xl">{{
                     file.name

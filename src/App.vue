@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { Button } from "@/components/ui/button";
-import PdfViewer from "@/components/PdfViewer.vue";
+import PdfViewerWrapper from "@/components/PdfViewerWrapper.vue";
 import Home from "@/components/Home.vue";
 import Recents from "@/components/Recents.vue";
 import { invoke } from "@tauri-apps/api/core";
@@ -107,7 +107,10 @@ onMounted(() => {
                 </Button>
             </div>
             <div v-else-if="selectedFilePath" class="w-full h-full">
-                <PdfViewer :file-path="selectedFilePath" @back="goBack" />
+                <PdfViewerWrapper
+                    :file-path="selectedFilePath"
+                    @back="goBack"
+                />
             </div>
         </transition>
     </div>

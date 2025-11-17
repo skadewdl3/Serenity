@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, defineEmits, defineProps } from "vue";
+import { ref, watch, defineProps } from "vue";
 import { useSwipe } from "@vueuse/core";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -8,8 +8,10 @@ import {
     ArrowRight,
     BookOpen,
     Fullscreen,
+    Clipboard,
     Home,
 } from "lucide-vue-next";
+import emitter from "@/lib/events";
 
 const props = defineProps<{
     currentPage: number;
@@ -20,18 +22,6 @@ const props = defineProps<{
     scale: number;
 }>();
 
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 4.0;
-
-const emit = defineEmits([
-    "nextPage",
-    "prevPage",
-    "lookupSelection",
-    "open-toolbar-drawer",
-    "back",
-    "fit-to-width",
-]);
-
 const showSelectionToolbar = ref(false);
 const transitionName = ref("p-to-d");
 
@@ -40,7 +30,7 @@ const paginationToolbar = ref<HTMLElement | null>(null);
 const { direction } = useSwipe(paginationToolbar, {
     onSwipeEnd: () => {
         if (direction.value === "up") {
-            emit("open-toolbar-drawer");
+            emitter.emit("openToolbarDrawer");
         }
     },
 });
@@ -63,22 +53,25 @@ watch(
 
 // Handlers
 function handleNext() {
-    emit("nextPage");
+    emitter.emit("nextPage");
 }
 function handlePrev() {
-    emit("prevPage");
+    emitter.emit("prevPage");
 }
 
 function handleLookup() {
-    emit("lookupSelection");
+    emitter.emit("lookupSelection");
+}
+
+function handleCopy() {
+    emitter.emit("copySelection");
 }
 </script>
 
 <template>
     <div
         ref="paginationToolbar"
-        class="absolute z-10 h-20 transition-colors duration-300 bottom-0 left-0 right-0 w-full border-t landscape:h-16 landscape:w-2/5 landscape:min-w-[320px] landscape:left-auto landscape:right-4 landscape:bottom-4 landscape:rounded-lg landscape:shadow-lg landscape:border"
-        :class="showSelectionToolbar ? 'bg-gray-50' : 'bg-white'"
+        class="absolute z-10 h-20 bg-white transition-colors duration-300 bottom-0 left-0 right-0 w-full border-t landscape:h-16 landscape:w-2/5 landscape:min-w-[320px] landscape:left-auto landscape:right-4 landscape:bottom-4 landscape:rounded-lg landscape:shadow-lg landscape:border"
     >
         <Transition :name="transitionName" mode="out-in">
             <!-- ✅ Selection toolbar -->
@@ -97,7 +90,7 @@ function handleLookup() {
                 </div>
 
                 <!-- Right: controls -->
-                <div class="flex items-center gap-2">
+                <ButtonGroup>
                     <Button
                         @click="handleLookup"
                         size="icon"
@@ -106,7 +99,15 @@ function handleLookup() {
                     >
                         <BookOpen class="h-4 w-4" />
                     </Button>
-                </div>
+                    <Button
+                        @click="handleCopy"
+                        size="icon"
+                        variant="outline"
+                        title="Clipboard"
+                    >
+                        <Clipboard class="h-4 w-4" />
+                    </Button>
+                </ButtonGroup>
             </div>
 
             <!-- ✅ Pagination toolbar -->
@@ -114,7 +115,7 @@ function handleLookup() {
                 <!-- Left -->
                 <ButtonGroup>
                     <Button
-                        @click="$emit('back')"
+                        @click="emitter.emit('goBack')"
                         variant="outline"
                         size="icon"
                         title="Back"
@@ -122,7 +123,7 @@ function handleLookup() {
                         <Home class="h-4 w-4" />
                     </Button>
                     <Button
-                        @click="$emit('fit-to-width')"
+                        @click="emitter.emit('fitToWidth')"
                         variant="outline"
                         size="icon"
                         title="Fit to Width"

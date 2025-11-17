@@ -199,22 +199,11 @@ watch(
         }
     },
 );
-
-const { orientation } = useScreenOrientation();
-const isVertical = computed(
-    () =>
-        orientation.value == "portrait-primary" ||
-        orientation.value == "portrait-secondary",
-);
 </script>
 
 <template>
     <Drawer v-model:open="isOpen">
-        <DrawerContent
-            :class="{
-                'max-w-calc(50vw_-_20px) ml-[50vw]': !isVertical,
-            }"
-        >
+        <DrawerContent>
             <div class="mx-auto w-full max-w-2xl">
                 <DrawerHeader>
                     <DrawerTitle>Definition for "{{ props.word }}"</DrawerTitle>
