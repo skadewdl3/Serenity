@@ -6,16 +6,9 @@ import Home from "@/components/Home.vue";
 import Recents from "@/components/Recents.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { FilePlus } from "lucide-vue-next";
+import emitter, { type RecentFile } from "@/lib/events";
 
 const transitionName = ref("fade");
-
-interface FileInfo {
-    path: string;
-    uri: string;
-    file_type: string;
-    name: string;
-    lastOpened?: number;
-}
 
 const selectedFilePath = ref<string | null>(null);
 const showPdfViewer = ref(false);
@@ -24,7 +17,7 @@ const showRecents = ref(false);
 async function selectFile() {
     transitionName.value = "slide-left";
     try {
-        const fileInfo = await invoke<FileInfo>("pick_file_with_metdata");
+        const fileInfo = await invoke<RecentFile>("pick_file_with_metdata");
         if (fileInfo) {
             await addFileToStore(fileInfo);
             selectedFilePath.value = fileInfo.path;
@@ -35,30 +28,18 @@ async function selectFile() {
     }
 }
 
-async function openFile(fileInfo: FileInfo) {
+async function openFile(fileInfo: RecentFile) {
     transitionName.value = "slide-left";
     await addFileToStore(fileInfo);
     selectedFilePath.value = fileInfo.path;
     showPdfViewer.value = true;
 }
 
-async function addFileToStore(fileInfo: FileInfo) {
-    const files = JSON.parse(
-        localStorage.getItem("recentFiles") || "[]",
-    ) as FileInfo[];
-
-    const now = Date.now();
-    const existingFileIndex = files.findIndex((f) => f.path === fileInfo.path);
-
-    if (existingFileIndex !== -1) {
-        files[existingFileIndex].lastOpened = now;
-        const updatedFile = files.splice(existingFileIndex, 1)[0];
-        files.unshift(updatedFile);
-    } else {
-        fileInfo.lastOpened = now;
-        files.unshift(fileInfo);
-    }
-    localStorage.setItem("recentFiles", JSON.stringify(files));
+async function addFileToStore(fileInfo: RecentFile) {
+    emitter.emit("createRecentsEntry", {
+        ...fileInfo,
+        lastOpened: Date.now(),
+    });
 }
 
 function goBack() {

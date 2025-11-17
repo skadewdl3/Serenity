@@ -8,7 +8,7 @@ import ToolbarDrawer from "./ToolbarDrawer.vue";
 import { refAutoReset, useScreenOrientation } from "@vueuse/core";
 import * as PDFJS from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
-import emitter from "@/lib/events";
+import emitter, { type RecentFile } from "@/lib/events";
 import { Spinner } from "@/components/ui/spinner";
 
 const props = defineProps({
@@ -44,6 +44,15 @@ watch(orientation, () => {
     rotating.value = true;
 });
 
+watch(currentPage, (newPage) => {
+    if (props.filePath) {
+        emitter.emit("editRecentsEntry", {
+            path: props.filePath,
+            pageNumber: newPage,
+        });
+    }
+});
+
 onMounted(async () => {
     if (!props.filePath) return;
 
@@ -57,6 +66,18 @@ onMounted(async () => {
         const doc = await loadingTask.promise;
         pdf.value = doc;
         pageCount.value = doc.numPages;
+
+        const recentsRaw = localStorage.getItem("recentFiles");
+        if (recentsRaw) {
+            const recents = JSON.parse(recentsRaw) as RecentFile[];
+            const currentFile = recents.find(
+                (file) => file.path === props.filePath,
+            );
+            if (currentFile && currentFile.pageNumber) {
+                currentPage.value = currentFile.pageNumber;
+            }
+        }
+
         isPdfLoading.value = false;
     } catch (err) {
         console.error("Failed to load PDF:", err);

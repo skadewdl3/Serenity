@@ -1,5 +1,14 @@
 import mitt from "mitt";
 
+export interface RecentFile {
+  path: string;
+  uri: string;
+  file_type: string;
+  name: string;
+  lastOpened?: number;
+  pageNumber?: number;
+}
+
 type Events = {
   nextPage: void;
   prevPage: void;
@@ -15,6 +24,9 @@ type Events = {
   openToolbarDrawer: void;
   zoomChanged: number;
   toggleToolbar: void;
+  createRecentsEntry: RecentFile;
+  editRecentsEntry: Partial<RecentFile> & { path: string };
+  deleteRecentsEntry: string; // path
 };
 
 const emitter = mitt<Events>();

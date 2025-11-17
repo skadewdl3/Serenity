@@ -5,16 +5,9 @@ import FileDetailsDrawer from "./FileDetailsDrawer.vue";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { Button } from "@/components/ui/button";
+import emitter, { type RecentFile as FileInfo } from "@/lib/events";
 
 dayjs.extend(relativeTime);
-
-interface FileInfo {
-    path: string;
-    uri: string;
-    file_type: string;
-    name: string;
-    lastOpened?: number;
-}
 
 const recentFiles = ref<FileInfo[]>([]);
 const selectedFile = ref<FileInfo | null>(null);
@@ -47,8 +40,8 @@ function openFile(file: FileInfo) {
 }
 
 function removeRecentFile(path: string) {
-    recentFiles.value = recentFiles.value.filter((file) => file.path !== path);
-    localStorage.setItem("recentFiles", JSON.stringify(recentFiles.value));
+    emitter.emit("deleteRecentsEntry", path);
+    loadRecentFiles();
     isDrawerOpen.value = false;
     selectedFile.value = null;
 }
