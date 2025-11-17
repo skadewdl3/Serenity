@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 
 import {
     Drawer,
@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { fetch } from "@tauri-apps/plugin-http";
+
+import { useScreenOrientation } from "@vueuse/core";
 
 const props = defineProps<{
     word: string | null;
@@ -197,11 +199,22 @@ watch(
         }
     },
 );
+
+const { orientation } = useScreenOrientation();
+const isVertical = computed(
+    () =>
+        orientation.value == "portrait-primary" ||
+        orientation.value == "portrait-secondary",
+);
 </script>
 
 <template>
     <Drawer v-model:open="isOpen">
-        <DrawerContent>
+        <DrawerContent
+            :class="{
+                'max-w-calc(50vw_-_20px) ml-[50vw]': !isVertical,
+            }"
+        >
             <div class="mx-auto w-full max-w-2xl">
                 <DrawerHeader>
                     <DrawerTitle>Definition for "{{ props.word }}"</DrawerTitle>

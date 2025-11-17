@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { ref, watch, defineEmits, defineProps } from "vue";
+import { useSwipe } from "@vueuse/core";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import {
     ArrowLeft,
     ArrowRight,
-    ChevronLeft,
     BookOpen,
-    ChevronRight,
-    ZoomIn,
-    ZoomOut,
+    Fullscreen,
+    Home,
 } from "lucide-vue-next";
 
 const props = defineProps<{
@@ -27,16 +26,24 @@ const MAX_SCALE = 4.0;
 const emit = defineEmits([
     "nextPage",
     "prevPage",
-    "back",
-    "shrinkSelection",
-    "expandSelection",
     "lookupSelection",
-    "zoomIn",
-    "zoomOut",
+    "open-toolbar-drawer",
+    "back",
+    "fit-to-width",
 ]);
 
 const showSelectionToolbar = ref(false);
 const transitionName = ref("p-to-d");
+
+const paginationToolbar = ref<HTMLElement | null>(null);
+
+const { direction } = useSwipe(paginationToolbar, {
+    onSwipeEnd: () => {
+        if (direction.value === "up") {
+            emit("open-toolbar-drawer");
+        }
+    },
+});
 
 watch(
     () => props.selectedText,
@@ -55,34 +62,21 @@ watch(
 );
 
 // Handlers
-function handleBack() {
-    emit("back");
-}
 function handleNext() {
     emit("nextPage");
 }
 function handlePrev() {
     emit("prevPage");
 }
-function handleShrink() {
-    emit("shrinkSelection");
-}
-function handleExpand() {
-    emit("expandSelection");
-}
+
 function handleLookup() {
     emit("lookupSelection");
-}
-function handleZoomIn() {
-    emit("zoomIn");
-}
-function handleZoomOut() {
-    emit("zoomOut");
 }
 </script>
 
 <template>
     <div
+        ref="paginationToolbar"
         class="absolute z-10 h-20 transition-colors duration-300 bottom-0 left-0 right-0 w-full border-t landscape:h-16 landscape:w-2/5 landscape:min-w-[320px] landscape:left-auto landscape:right-4 landscape:bottom-4 landscape:rounded-lg landscape:shadow-lg landscape:border"
         :class="showSelectionToolbar ? 'bg-gray-50' : 'bg-white'"
     >
@@ -103,76 +97,42 @@ function handleZoomOut() {
                 </div>
 
                 <!-- Right: controls -->
-                <div class="flex flex-col items-end gap-1">
-                    <div class="flex items-center gap-2">
-                        <Button
-                            @click="handleLookup"
-                            size="icon"
-                            variant="outline"
-                            title="Lookup"
-                        >
-                            <BookOpen class="h-4 w-4" />
-                        </Button>
-
-                        <ButtonGroup>
-                            <Button
-                                @click="handleShrink"
-                                size="icon"
-                                variant="outline"
-                                title="Shrink selection (reduce by 1 char)"
-                            >
-                                <ChevronLeft class="h-4 w-4" />
-                            </Button>
-
-                            <Button
-                                @click="handleExpand"
-                                size="icon"
-                                variant="outline"
-                                title="Expand selection (add 1 char)"
-                            >
-                                <ChevronRight class="h-4 w-4" />
-                            </Button>
-                        </ButtonGroup>
-                    </div>
+                <div class="flex items-center gap-2">
+                    <Button
+                        @click="handleLookup"
+                        size="icon"
+                        variant="outline"
+                        title="Lookup"
+                    >
+                        <BookOpen class="h-4 w-4" />
+                    </Button>
                 </div>
             </div>
 
             <!-- ✅ Pagination toolbar -->
             <div v-else class="flex items-center justify-between h-full px-4">
-                <!-- Left: Zoom controls -->
-                <div class="w-24 flex justify-start">
-                    <ButtonGroup>
-                        <Button
-                            @click="handleZoomOut"
-                            :disabled="
-                                props.isLoading ||
-                                props.isRendering ||
-                                props.scale <= MIN_SCALE
-                            "
-                            variant="outline"
-                            size="icon"
-                            title="Zoom Out"
-                        >
-                            <ZoomOut class="h-4 w-4" />
-                        </Button>
-                        <Button
-                            @click="handleZoomIn"
-                            :disabled="
-                                props.isLoading ||
-                                props.isRendering ||
-                                props.scale >= MAX_SCALE
-                            "
-                            variant="outline"
-                            size="icon"
-                            title="Zoom In"
-                        >
-                            <ZoomIn class="h-4 w-4" />
-                        </Button>
-                    </ButtonGroup>
-                </div>
+                <!-- Left -->
+                <ButtonGroup>
+                    <Button
+                        @click="$emit('back')"
+                        variant="outline"
+                        size="icon"
+                        title="Back"
+                    >
+                        <Home class="h-4 w-4" />
+                    </Button>
+                    <Button
+                        @click="$emit('fit-to-width')"
+                        variant="outline"
+                        size="icon"
+                        title="Fit to Width"
+                    >
+                        <Fullscreen class="h-4 w-4" />
+                    </Button>
+                </ButtonGroup>
 
                 <!-- Center: Page numbers -->
-                <div class="flex items-center">
+                <div class="flex items-center justify-center">
                     <span class="text-sm font-medium text-gray-700">
                         <template
                             v-if="!props.isLoading && props.totalPages > 0"
@@ -183,34 +143,30 @@ function handleZoomOut() {
                 </div>
 
                 <!-- Right: Page navigation -->
-                <div class="w-24 flex justify-end">
-                    <ButtonGroup>
-                        <Button
-                            @click="handlePrev"
-                            :disabled="
-                                props.currentPage <= 1 || props.isRendering
-                            "
-                            variant="outline"
-                            size="icon"
-                            title="Previous Page"
-                        >
-                            <ArrowLeft class="h-4 w-4" />
-                        </Button>
+                <ButtonGroup>
+                    <Button
+                        @click="handlePrev"
+                        :disabled="props.currentPage <= 1 || props.isRendering"
+                        variant="outline"
+                        size="icon"
+                        title="Previous Page"
+                    >
+                        <ArrowLeft class="h-4 w-4" />
+                    </Button>
 
-                        <Button
-                            @click="handleNext"
-                            :disabled="
-                                props.currentPage >= props.totalPages ||
-                                props.isRendering
-                            "
-                            variant="outline"
-                            size="icon"
-                            title="Next Page"
-                        >
-                            <ArrowRight class="h-4 w-4" />
-                        </Button>
-                    </ButtonGroup>
-                </div>
+                    <Button
+                        @click="handleNext"
+                        :disabled="
+                            props.currentPage >= props.totalPages ||
+                            props.isRendering
+                        "
+                        variant="outline"
+                        size="icon"
+                        title="Next Page"
+                    >
+                        <ArrowRight class="h-4 w-4" />
+                    </Button>
+                </ButtonGroup>
             </div>
         </Transition>
     </div>

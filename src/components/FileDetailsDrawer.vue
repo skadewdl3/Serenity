@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { BookOpen, Trash2 } from "lucide-vue-next";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { useScreenOrientation } from "@vueuse/core";
+import { computed } from "vue";
 
 dayjs.extend(relativeTime);
 
@@ -66,11 +68,23 @@ function formatTimeAgo(timestamp?: number): string {
     }
     return date.fromNow();
 }
+
+const { orientation } = useScreenOrientation();
+const isVertical = computed(
+    () =>
+        orientation.value == "portrait-primary" ||
+        orientation.value == "portrait-secondary",
+);
 </script>
 
 <template>
     <Drawer v-model:open="open">
-        <DrawerContent v-if="file">
+        <DrawerContent
+            v-if="file"
+            :class="{
+                'max-w-calc(50vw_-_20px) ml-[50vw]': !isVertical,
+            }"
+        >
             <DrawerHeader>
                 <DrawerTitle class="truncate text-xl">{{
                     file.name
