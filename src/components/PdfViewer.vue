@@ -13,6 +13,7 @@ import {
     useWindowSize,
     refDebounced,
     useElementBounding,
+    refAutoReset,
     useSwipe,
 } from "@vueuse/core";
 import { VuePDF } from "@tato30/vue-pdf";
@@ -43,6 +44,7 @@ const DEFAULT_SCALE = 0.9;
 
 // --- Viewer State ---
 const { direction } = useSwipe(pageWrapper);
+const isZooming = refAutoReset(false, 100);
 const scale = ref(DEFAULT_SCALE);
 const pdfScale = refDebounced(scale, 1000);
 const pan = ref({ x: 0, y: 0 });
@@ -63,6 +65,7 @@ watch(scale, (newScale) => {
 });
 
 watch(direction, () => {
+    if (isZooming.value) return;
     if (direction.value === "left") {
         emitter.emit("nextPage");
     } else if (direction.value === "right") {
@@ -178,6 +181,7 @@ onUnmounted(() => {
             v-model:zoom="scale"
             v-model:pan="pan"
             @panned="handlePan"
+            @zoom="isZooming = true"
             :min-zoom="MIN_ZOOM"
             :max-zoom="MAX_ZOOM"
             :enable-control-button="false"
