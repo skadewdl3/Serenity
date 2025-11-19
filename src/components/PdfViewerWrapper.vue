@@ -10,11 +10,17 @@ import * as PDFJS from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 import emitter, { type RecentFile } from "@/lib/events";
 import { Spinner } from "@/components/ui/spinner";
+import { invoke } from "@tauri-apps/api/core";
 
 const props = defineProps({
     filePath: String,
 });
 const emit = defineEmits(["back"]);
+
+const quote = ref<string>("Loading...");
+invoke<string>("get_random_loading_quote").then((res) => {
+    quote.value = res;
+});
 
 // --- Tauri Worker Setup ---
 PDFJS.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -78,7 +84,20 @@ onMounted(async () => {
             }
         }
 
-        isPdfLoading.value = false;
+        // Yes this setTimeout is weird as fuck
+        // DO NOT REMOVE THIS
+        // I've used the power of anime and god to fix
+        // this unexplainable bug - even idk why it's happening
+        function sleep(ms: number) {
+            return new Promise((resolve) => setTimeout(resolve, ms));
+        }
+        for (let i = 0; i < 4; i++) {
+            rotating.value = true;
+            await sleep(100);
+        }
+        setTimeout(() => {
+            isPdfLoading.value = false;
+        }, 1000);
     } catch (err) {
         console.error("Failed to load PDF:", err);
     }
@@ -155,47 +174,54 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="w-screen h-screen grid" v-if="isPdfLoading">
-        <span class="place-self-center">
+    <div
+        class="w-screen h-screen grid fixed top-0 left-0 bg-white z-10"
+        v-if="isPdfLoading"
+    >
+        <span
+            class="place-self-center flex flex-col items-center justify-center gap-8"
+        >
             <Spinner v-if="isPdfLoading" class="mx-auto scale-250" />
+            <p class="text-center text-neutral-500">
+                {{ quote || "Loading" }}...
+            </p>
         </span>
     </div>
-    <template v-else>
-        <PdfViewer
-            v-if="pdfTask && pdf && !rotating"
-            :key="orientation"
-            :pdf-task="pdfTask"
-            :page-count="pageCount"
-            :pdf="pdf"
-            @loaded="loaded"
-            :current-page="currentPage"
-            :loading="isPdfLoading"
-        />
-        <transition>
-            <p v-if="rotating">ROTATING!</p>
-        </transition>
-        <Toolbar
-            :current-page="currentPage"
-            :total-pages="pageCount"
-            :is-loading="isPdfLoading"
-            :is-rendering="false"
-            :selected-text="selectedText"
-            :scale="scale"
-            class="fixed bottom-0 transition-transform duration-300"
-            :class="{
-                'translate-y-full landscape:translate-y-[calc(100%+1rem)]':
-                    !isToolbarVisible,
-            }"
-        />
-        <DefinitionDrawer
-            v-model:open="isDefinitionDrawerOpen"
-            :word="wordForDefinition"
-        />
-        <ToolbarDrawer
-            v-model:open="isToolbarDrawerOpen"
-            :scale="scale"
-            :min-scale="MIN_ZOOM"
-            :max-scale="MAX_ZOOM"
-        />
-    </template>
+    <PdfViewer
+        v-if="pdfTask && pdf && !rotating"
+        :key="orientation"
+        :pdf-task="pdfTask"
+        :page-count="pageCount"
+        :pdf="pdf"
+        @loaded="loaded"
+        :current-page="currentPage"
+        :loading="isPdfLoading"
+    />
+    <transition>
+        <p v-if="rotating">ROTATING!</p>
+    </transition>
+    <Toolbar
+        v-if="!isPdfLoading"
+        :current-page="currentPage"
+        :total-pages="pageCount"
+        :is-loading="isPdfLoading"
+        :is-rendering="false"
+        :selected-text="selectedText"
+        :scale="scale"
+        class="fixed bottom-0 transition-transform duration-300"
+        :class="{
+            'translate-y-full landscape:translate-y-[calc(100%+1rem)]':
+                !isToolbarVisible,
+        }"
+    />
+    <DefinitionDrawer
+        v-model:open="isDefinitionDrawerOpen"
+        :word="wordForDefinition"
+    />
+    <ToolbarDrawer
+        v-model:open="isToolbarDrawerOpen"
+        :scale="scale"
+        :min-scale="MIN_ZOOM"
+        :max-scale="MAX_ZOOM"
+    />
 </template>

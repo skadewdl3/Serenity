@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import VueZoomable from "vue-zoomable";
-import { ref, useTemplateRef, watch, computed, onUnmounted } from "vue";
+import {
+    ref,
+    useTemplateRef,
+    watch,
+    computed,
+    onUnmounted,
+    nextTick,
+} from "vue";
 import {
     useEventListener,
     useWindowSize,
     refDebounced,
     useElementBounding,
+    useSwipe,
 } from "@vueuse/core";
 import { VuePDF } from "@tato30/vue-pdf";
 import "@tato30/vue-pdf/style.css";
@@ -25,14 +33,16 @@ const emit = defineEmits<{
     loaded: [data: any];
 }>();
 
+const pageWrapper = useTemplateRef("pageWrapper");
+
 // --- Constants ---
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4.0;
 const ZOOM_STEP = 0.25;
 const DEFAULT_SCALE = 0.9;
 
-//
 // --- Viewer State ---
+const { direction } = useSwipe(pageWrapper);
 const scale = ref(DEFAULT_SCALE);
 const pdfScale = refDebounced(scale, 1000);
 const pan = ref({ x: 0, y: 0 });
@@ -50,6 +60,14 @@ const allowPan = computed(() => {
 
 watch(scale, (newScale) => {
     emitter.emit("zoomChanged", newScale);
+});
+
+watch(direction, () => {
+    if (direction.value === "left") {
+        emitter.emit("nextPage");
+    } else if (direction.value === "right") {
+        emitter.emit("prevPage");
+    }
 });
 
 watch(centerPan, () => {
@@ -107,12 +125,16 @@ function handlePageClick(e: MouseEvent) {
 }
 
 let firstPageLoaded = false;
-function onPageLoad(data: any) {
+async function onPageLoad(data: any) {
     if (!firstPageLoaded) {
-        let panY = windowHeight.value / 2 - data.height / 2;
-        let panX = windowWidth.value / 2 - data.width / 2;
-        centerPan.value = { x: panX, y: panY };
-        pan.value = { x: panX, y: panY };
+        await nextTick(); // Wait for the DOM to update
+        if (viewerWrapper.value) {
+            const rect = viewerWrapper.value.getBoundingClientRect();
+            let panY = windowHeight.value / 2 - rect.height / 2;
+            let panX = windowWidth.value / 2 - rect.width / 2;
+            centerPan.value = { x: panX, y: panY };
+            pan.value = { x: panX, y: panY };
+        }
     }
     setTimeout(() => {
         firstPageLoaded = true;
@@ -143,7 +165,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="pdf-viewer screen h-screen" @click="handlePageClick">
+    <div
+        class="pdf-viewer screen h-screen"
+        ref="pageWrapper"
+        @click="handlePageClick"
+    >
         <VueZoomable
             selector="#wrapper"
             class="h-screen w-screen"
@@ -167,7 +193,6 @@ onUnmounted(() => {
                     :scale="pdfScale"
                     @loaded="onPageLoad"
                     text-layer
-                    annotation-layer
                 />
             </div>
         </VueZoomable>

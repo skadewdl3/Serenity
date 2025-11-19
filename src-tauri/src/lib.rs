@@ -127,31 +127,63 @@ fn get_display_name_from_uri(app: tauri::AppHandle, uri: String) -> Result<Strin
     }
 }
 
-use std::sync::{mpsc, Arc, Mutex};
-use tauri::Manager;
+#[derive(Serialize, Deserialize)]
+struct LoadingText {
+    book: String,
+    quote: String,
+}
+
+struct AppState {
+    quotes: Mutex<Vec<LoadingText>>,
+}
+
+#[tauri::command]
+fn get_random_loading_quote(state: State<'_, AppState>) -> Result<String, String> {
+    use rand::Rng;
+    let quotes = state.quotes.lock().unwrap();
+
+    if !quotes.is_empty() {
+        let mut rng = rand::thread_rng();
+        let random_index = rng.gen_range(0..quotes.len());
+        if let Some(random_item) = quotes.get(random_index) {
+            return Ok(random_item.quote.to_owned());
+        }
+    }
+
+    // Fallback loading quote
+    Ok("Loading...".to_string())
+}
+
+use serde::{Deserialize, Serialize};
+use std::sync::{mpsc, Mutex};
+use tauri::{path::BaseDirectory, Manager, State};
+use tauri_plugin_fs::FsExt;
 mod files;
-// use tauri_plugin_android_fs::FileUri; // From the android-fs plugin
-
-// #[command]
-// pub async fn get_file_size(uri_str: String) -> Result<u64, String> {
-//     // Parse String → FileUri (supports content:// directly)
-//     let file_uri = FileUri::from_str(&uri_str).map_err(|e| format!("Invalid URI: {e}"))?;
-
-//     // Convert FileUri → FilePath (direct Into impl)
-//     let path = tauri_plugin_fs::FilePath::from(file_uri);
-
-//     // stat() as above
-//     let metadata = stat(&path)
-//         .await
-//         .map_err(|e| format!("Failed to get metadata: {e}"))?;
-
-//     Ok(metadata.len)
-// }
-//
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            let file_path = app_handle
+                .path()
+                .resolve("resources/loading.json", BaseDirectory::Resource)
+                .expect("Failed to resolve loading quotes path");
+
+            let quotes_str = app_handle
+                .fs()
+                .read_to_string(file_path)
+                .expect("Failed to read loading quotes file");
+
+            let quotes: Vec<LoadingText> =
+                serde_json::from_str(&quotes_str).unwrap_or_else(|_| vec![]);
+
+            app.manage(AppState {
+                quotes: Mutex::new(quotes),
+            });
+
+            Ok(())
+        })
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
@@ -160,7 +192,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             get_display_name_from_uri,
-            files::pick_file_with_metdata
+            files::pick_file_with_metdata,
+            get_random_loading_quote
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,0 +1,125 @@
+[
+  { "book": "Dune", "quote": "All hail the God Emperor" },
+  { "book": "Dune", "quote": "The spice must… take its time" },
+  { "book": "Dune", "quote": "Fear is the little delay" },
+  { "book": "Dune", "quote": "Plans within plans within progress bars" },
+  { "book": "Dune", "quote": "Summoning a slight prescience" },
+
+  { "book": "Hyperion", "quote": "The Shrike is watching" },
+  {
+    "book": "Hyperion",
+    "quote": "A pilgrimage always takes longer than planned"
+  },
+  { "book": "Hyperion", "quote": "The Time Tombs aren't opening just yet" },
+
+  { "book": "Foundation", "quote": "Psychohistory predicted this pause" },
+  {
+    "book": "Foundation",
+    "quote": "Violence is the last refuge of the impatient"
+  },
+  {
+    "book": "Foundation",
+    "quote": "The equations say we’ll get there eventually"
+  },
+
+  { "book": "Mistborn", "quote": "There’s always another secret" },
+  { "book": "Mistborn", "quote": "Burning metals for a little more patience" },
+  { "book": "Mistborn", "quote": "The mists are gathering slowly" },
+
+  {
+    "book": "Stormlight Archive",
+    "quote": "Life before loading, loading before destination"
+  },
+  {
+    "book": "Stormlight Archive",
+    "quote": "The spren are being uncooperative again"
+  },
+  {
+    "book": "Stormlight Archive",
+    "quote": "Journey before… everything, really"
+  },
+
+  { "book": "The Hitchhiker’s Guide to the Galaxy", "quote": "Don’t panic" },
+  {
+    "book": "The Hitchhiker’s Guide to the Galaxy",
+    "quote": "Time is an illusion; loading time doubly so"
+  },
+  {
+    "book": "The Hitchhiker’s Guide to the Galaxy",
+    "quote": "Mostly harmless. Mostly waiting."
+  },
+
+  { "book": "1984", "quote": "Big Brother is watching the progress bar" },
+  { "book": "1984", "quote": "Ignorance is strength. Patience is mandatory." },
+
+  {
+    "book": "The Great Gatsby",
+    "quote": "So we beat on, boats against the current… slowly"
+  },
+  {
+    "book": "The Great Gatsby",
+    "quote": "Can’t repeat the past? ...We’re trying."
+  },
+
+  { "book": "Alice in Wonderland", "quote": "Curiouser and curiouser" },
+  {
+    "book": "Alice in Wonderland",
+    "quote": "Down the rabbit hole we go, just a bit slower"
+  },
+
+  {
+    "book": "Lord of the Rings",
+    "quote": "One does not simply rush a spinner"
+  },
+  {
+    "book": "Lord of the Rings",
+    "quote": "Even the smallest delay can change the course of the future"
+  },
+  {
+    "book": "Lord of the Rings",
+    "quote": "Not all those who wander are finished loading"
+  },
+
+  { "book": "Harry Potter", "quote": "Mischief… managed eventually" },
+  {
+    "book": "Harry Potter",
+    "quote": "The wand chooses the wizard, but the spinner chooses violence"
+  },
+
+  { "book": "Shakespeare (Hamlet)", "quote": "The rest is… buffering" },
+  {
+    "book": "Shakespeare (Hamlet)",
+    "quote": "To load, or not to load—that is the question"
+  },
+
+  {
+    "book": "Shakespeare (Macbeth)",
+    "quote": "By the pricking of my thumbs, something laggy this way comes"
+  },
+  { "book": "Shakespeare (Macbeth)", "quote": "Out, out brief stutter!" },
+
+  {
+    "book": "Shakespeare (Julius Caesar)",
+    "quote": "Beware the Ides of Delay"
+  },
+
+  {
+    "book": "Narnia",
+    "quote": "Once a king or queen of Narnia, always waiting on a wardrobe"
+  },
+  { "book": "Narnia", "quote": "Further up and further… hold on" },
+
+  {
+    "book": "Never Let Me Go",
+    "quote": "Completing is never as simple as it sounds"
+  },
+
+  { "book": "Slaughterhouse-Five", "quote": "So it delays" },
+
+  { "book": "Moby Dick", "quote": "Call me… patient" },
+
+  {
+    "book": "The Picture of Dorian Gray",
+    "quote": "The portrait is aging faster than this spinner"
+  }
+]
