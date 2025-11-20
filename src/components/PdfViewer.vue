@@ -15,11 +15,13 @@ import {
     useElementBounding,
     refAutoReset,
     useSwipe,
+    useDark,
 } from "@vueuse/core";
 import { VuePDF } from "@tato30/vue-pdf";
 import "@tato30/vue-pdf/style.css";
 import * as PDFJS from "pdfjs-dist";
 import emitter from "@/lib/events";
+import { useAppStore } from "@/stores/appStore";
 
 // --- Props & Emits ---
 const { pdfTask, pdf, currentPage } = defineProps<{
@@ -29,11 +31,12 @@ const { pdfTask, pdf, currentPage } = defineProps<{
     pageCount: number;
     loading: boolean;
 }>();
-
+const isDark = useDark();
 const emit = defineEmits<{
     loaded: [data: any];
 }>();
 
+const store = useAppStore();
 const pageWrapper = useTemplateRef("pageWrapper");
 
 // --- Constants ---
@@ -43,8 +46,13 @@ const ZOOM_STEP = 0.25;
 const DEFAULT_SCALE = 0.9;
 
 // --- Viewer State ---
+function handleClick() {
+    emitter.emit("toggleToolbar");
+}
+
 const { direction } = useSwipe(pageWrapper);
 const isZooming = refAutoReset(false, 100);
+const isPanning = refAutoReset(false, 100);
 const scale = ref(DEFAULT_SCALE);
 const pdfScale = refDebounced(scale, 1000);
 const pan = ref({ x: 0, y: 0 });
@@ -65,16 +73,12 @@ watch(scale, (newScale) => {
 });
 
 watch(direction, () => {
-    if (isZooming.value) return;
+    if ((allowPan.value.x && isPanning.value) || isZooming.value) return;
     if (direction.value === "left") {
         emitter.emit("nextPage");
     } else if (direction.value === "right") {
         emitter.emit("prevPage");
     }
-});
-
-watch(centerPan, () => {
-    pan.value = centerPan.value;
 });
 
 // --- Zoom ---
@@ -114,16 +118,18 @@ useEventListener(document, "selectionchange", handleSelection);
 
 // --- Click to Navigate / Toggle Toolbar ---
 function handlePageClick(e: MouseEvent) {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const width = rect.width;
+
     const deadZone = 0.3;
     const side = (width * (1 - deadZone)) / 2;
 
     if (!lastSelection) {
         if (x < side) emitter.emit("prevPage");
         else if (x > width - side) emitter.emit("nextPage");
-        else emitter.emit("toggleToolbar");
+        else store.hideToolbar = !store.hideToolbar;
     }
 }
 
@@ -134,9 +140,8 @@ async function onPageLoad(data: any) {
         if (viewerWrapper.value) {
             const rect = viewerWrapper.value.getBoundingClientRect();
             let panY = windowHeight.value / 2 - rect.height / 2;
-            let panX = windowWidth.value / 2 - rect.width / 2;
+            let panX = 0;
             centerPan.value = { x: panX, y: panY };
-            pan.value = { x: panX, y: panY };
         }
     }
     setTimeout(() => {
@@ -145,7 +150,12 @@ async function onPageLoad(data: any) {
     }, 50);
 }
 
+watch(centerPan, () => {
+    pan.value = centerPan.value;
+});
+
 function handlePan(_data: any) {
+    isPanning.value = true;
     if (!allowPan.value.x) {
         pan.value.x = centerPan.value.x;
     }
@@ -174,11 +184,14 @@ onUnmounted(() => {
         @click="handlePageClick"
     >
         <VueZoomable
-            selector="#wrapper"
-            class="h-screen w-screen"
-            zoom-origin="content-center"
-            :dbl-click-enabled="false"
+            ref="zoomableContainer"
+            @click="handleClick"
             v-model:zoom="scale"
+            :min-scale="0.5"
+            :max-scale="4"
+            :zooming-elastic="false"
+            :disabled="false"
+            class="w-full h-full overflow-hidden"
             v-model:pan="pan"
             @panned="handlePan"
             @zoom="isZooming = true"
@@ -190,12 +203,13 @@ onUnmounted(() => {
                 <VuePDF
                     v-if="pdfTask"
                     class="w-full h-full"
-                    :pdf="pdfTask"
+                    :pdf="pdfTask as any"
                     fit-parent
                     ref="viewer"
                     :page="currentPage"
                     :scale="pdfScale"
                     @loaded="onPageLoad"
+                    :class="{ 'invert-94': isDark && store.invertPdfInDarkMode }"
                     text-layer
                 />
             </div>
@@ -211,3 +225,4 @@ onUnmounted(() => {
     color: transparent !important;
 }
 </style>
+

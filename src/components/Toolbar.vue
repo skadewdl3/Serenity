@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, defineProps } from "vue";
+import { ref, watch, computed } from "vue";
 import { useSwipe } from "@vueuse/core";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -12,15 +12,19 @@ import {
     Home,
 } from "lucide-vue-next";
 import emitter from "@/lib/events";
+import { useAppStore } from "@/stores/appStore";
+import { storeToRefs } from "pinia";
 
-const props = defineProps<{
-    currentPage: number;
-    totalPages: number;
-    isRendering: boolean;
-    isLoading: boolean;
-    selectedText: string | null;
-    scale: number;
-}>();
+const store = useAppStore();
+const { readerState } = storeToRefs(store);
+
+// Computed props from store
+const currentPage = computed(() => readerState.value.currentPage);
+const totalPages = computed(() => readerState.value.totalPages);
+const isLoading = computed(() => readerState.value.isLoading);
+const isRendering = computed(() => readerState.value.isRendering);
+const selectedText = computed(() => readerState.value.selectedText);
+const scale = computed(() => readerState.value.scale);
 
 const showSelectionToolbar = ref(false);
 const transitionName = ref("p-to-d");
@@ -36,7 +40,7 @@ const { direction } = useSwipe(paginationToolbar, {
 });
 
 watch(
-    () => props.selectedText,
+    () => selectedText.value,
     (newVal, oldVal) => {
         const newIsSelection = !!newVal && newVal.trim().length > 0;
         const oldIsSelection = !!oldVal && oldVal.trim().length > 0;
@@ -71,7 +75,13 @@ function handleCopy() {
 <template>
     <div
         ref="paginationToolbar"
-        class="absolute z-10 h-20 bg-white transition-colors duration-300 bottom-0 left-0 right-0 w-full border-t landscape:h-16 landscape:w-2/5 landscape:min-w-[320px] landscape:left-auto landscape:right-4 landscape:bottom-4 landscape:rounded-lg landscape:shadow-lg landscape:border"
+        @click.stop
+        :class="[
+            'z-10 bg-background transition-colors duration-300',
+            store.floatingToolbars 
+                ? 'fixed bottom-8 left-1/2 -translate-x-1/2 w-[90vw] max-w-2xl h-16 rounded-lg shadow-lg border border-border backdrop-blur-md bg-background/80'
+                : 'absolute bottom-0 left-0 right-0 w-full h-20 border-t border-border landscape:h-16'
+        ]"
     >
         <Transition :name="transitionName" mode="out-in">
             <!-- ✅ Selection toolbar -->
@@ -82,10 +92,10 @@ function handleCopy() {
                 <!-- Left: selected text -->
                 <div class="flex-1 flex items-center min-w-0">
                     <div
-                        class="text-sm text-gray-700 truncate"
+                        class="text-sm text-foreground truncate"
                         title="Selected text"
                     >
-                        {{ props.selectedText }}
+                        {{ selectedText }}
                     </div>
                 </div>
 
@@ -134,11 +144,11 @@ function handleCopy() {
 
                 <!-- Center: Page numbers -->
                 <div class="flex items-center justify-center">
-                    <span class="text-sm font-medium text-gray-700">
+                    <span class="text-sm font-medium text-foreground">
                         <template
-                            v-if="!props.isLoading && props.totalPages > 0"
+                            v-if="!isLoading && totalPages > 0"
                         >
-                            {{ props.currentPage }} / {{ props.totalPages }}
+                            {{ currentPage }} / {{ totalPages }}
                         </template>
                     </span>
                 </div>
@@ -147,7 +157,7 @@ function handleCopy() {
                 <ButtonGroup>
                     <Button
                         @click="handlePrev"
-                        :disabled="props.currentPage <= 1 || props.isRendering"
+                        :disabled="currentPage <= 1 || isRendering"
                         variant="outline"
                         size="icon"
                         title="Previous Page"
@@ -158,8 +168,8 @@ function handleCopy() {
                     <Button
                         @click="handleNext"
                         :disabled="
-                            props.currentPage >= props.totalPages ||
-                            props.isRendering
+                            currentPage >= totalPages ||
+                            isRendering
                         "
                         variant="outline"
                         size="icon"

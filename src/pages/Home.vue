@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onActivated } from "vue";
 import { Book, File } from "lucide-vue-next";
-import FileDetailsDrawer from "./FileDetailsDrawer.vue";
+import FileDetailsDrawer from "@/components/FileDetailsDrawer.vue";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { useRouter } from "vue-router";
+import { useAppStore } from "@/stores/appStore";
 
 dayjs.extend(relativeTime);
 
@@ -32,10 +34,8 @@ const totalRecentFiles = ref(0);
 const selectedFile = ref<FileInfo | null>(null);
 const isDrawerOpen = ref(false);
 
-const emit = defineEmits<{
-    (e: "open-file", file: FileInfo): void;
-    (e: "see-more"): void;
-}>();
+const router = useRouter();
+const store = useAppStore();
 
 async function loadRecentFiles() {
     try {
@@ -56,7 +56,9 @@ async function loadRecentFiles() {
 }
 
 function openFile(file: FileInfo) {
-    emit("open-file", file);
+    store.openFile(file);
+    store.pushRoute('Viewer');
+    router.push({ name: 'Viewer' });
     isDrawerOpen.value = false;
 }
 
@@ -76,9 +78,18 @@ function handleFileClick(file: FileInfo) {
     isDrawerOpen.value = true;
 }
 
+function handleSeeMore() {
+    store.pushRoute('Recents');
+    router.push({ name: 'Recents' });
+}
+
 onMounted(() => {
     loadRecentFiles();
     quote.value = quotes[Math.floor(Math.random() * quotes.length)];
+});
+
+onActivated(() => {
+    loadRecentFiles();
 });
 
 const fileTypeToIcon = (fileType: string) => {
@@ -100,54 +111,59 @@ function formatTimeAgo(timestamp?: number): string {
 </script>
 
 <template>
-    <div class="w-full max-w-4xl mx-auto p-8 h-full">
+    <div
+        class="w-full max-w-4xl mx-auto p-8 h-screen bg-background text-foreground relative"
+    >
         <!-- Centered layout when no recents -->
         <div
             v-if="recentFiles.length === 0"
-            class="flex flex-col items-center justify-center text-center h-full"
+            class="flex flex-col items-center justify-center text-center h-full pb-20"
         >
-            <h1 class="text-6xl font-bold">Serenity</h1>
-            <p class="text-lg text-gray-500 mt-4 italic">"{{ quote }}"</p>
+            <h1 class="text-6xl font-bold font-serif">Serenity</h1>
+            <p class="text-lg text-muted-foreground mt-4 italic">
+                "{{ quote }}"
+            </p>
         </div>
 
         <!-- Top-aligned layout when recents are present -->
-        <div v-else class="pt-16">
-            <div class="text-center mb-8">
-                <h1 class="text-6xl font-bold">Serenity</h1>
-                <p class="text-md text-gray-500 mt-2 italic">"{{ quote }}"</p>
+        <div v-else class="pt-16 pb-32">
+            <div class="text-center mb-12">
+                <h1 class="text-6xl font-bold font-serif">Serenity</h1>
+                <p class="text-md text-muted-foreground mt-2 italic">
+                    "{{ quote }}"
+                </p>
             </div>
 
-            <hr class="mb-8 border-t border-gray-200 dark:border-gray-800" />
-
-            <h2 class="text-2xl text-center font-bold mb-4">Recents</h2>
-            <div class="flex flex-col">
+            <div class="flex flex-col gap-6">
                 <template v-for="(file, index) in recentFiles" :key="file.path">
                     <div
-                        class="py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-4"
+                        class="flex cursor-pointer items-center gap-6 py-2 hover:bg-accent/50 rounded-lg px-4 transition-colors"
                         @click="() => handleFileClick(file)"
                     >
                         <component
                             :is="fileTypeToIcon(file.file_type)"
-                            class="w-10 h-10 text-gray-500 shrink-0"
+                            class="h-10 w-10 shrink-0 text-primary"
                         />
                         <div class="grow truncate">
-                            <p class="text-sm font-medium truncate">
+                            <p
+                                class="truncate text-base font-medium text-foreground"
+                            >
                                 {{ file.name }}
                             </p>
-                            <p class="text-xs text-gray-500">
+                            <p class="text-sm text-muted-foreground">
                                 {{ formatTimeAgo(file.lastOpened) }}
                             </p>
                         </div>
                     </div>
                     <div
                         v-if="index < recentFiles.length - 1"
-                        class="h-px bg-gradient-to-r from-transparent via-gray-300 dark:via-gray-700 to-transparent"
+                        class="h-px bg-gradient-to-r from-transparent via-border to-transparent mx-4"
                     ></div>
                 </template>
-                <div v-if="totalRecentFiles > 5" class="py-4 text-center">
+                <div v-if="totalRecentFiles > 5" class="py-6 text-center">
                     <a
-                        @click="$emit('see-more')"
-                        class="text-blue-500 underline cursor-pointer"
+                        class="cursor-pointer text-primary font-medium hover:text-primary/80 transition-colors"
+                        @click="handleSeeMore"
                     >
                         See more
                     </a>

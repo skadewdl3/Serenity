@@ -79,42 +79,54 @@ const isVertical = computed(
 
 <template>
     <Drawer v-model:open="open">
-        <DrawerContent v-if="file">
+        <DrawerContent
+            v-if="file"
+            class="dark:bg-neutral-900 dark:text-gray-50"
+        >
             <DrawerHeader>
                 <DrawerTitle class="truncate text-xl">{{
                     file.name
                 }}</DrawerTitle>
             </DrawerHeader>
 
-            <div class="px-4 space-y-2">
-                <div class="text-sm text-gray-500 flex flex-col gap-2">
+            <div class="space-y-2 px-4">
+                <div
+                    class="flex flex-col gap-2 text-sm text-gray-500 dark:text-gray-400"
+                >
                     <p>
-                        <strong class="font-medium text-gray-700">Type:</strong>
+                        <strong
+                            class="font-medium text-gray-700 dark:text-gray-300"
+                            >Type:</strong
+                        >
                         {{ fileTypeToType(file.file_type) }}
                     </p>
                     <p>
-                        <strong class="font-medium text-gray-700"
+                        <strong
+                            class="font-medium text-gray-700 dark:text-gray-300"
                             >Last Opened:</strong
                         >
                         {{ formatTimeAgo(file.lastOpened) }}
                     </p>
                     <p>
-                        <strong class="font-medium text-gray-700">Path:</strong>
+                        <strong
+                            class="font-medium text-gray-700 dark:text-gray-300"
+                            >Path:</strong
+                        >
                         <span class="break-all">{{ file.path }}</span>
                     </p>
                 </div>
             </div>
 
             <DrawerFooter
-                class="flex flex-row mt-4 justify-end gap-2 items-center"
+                class="mt-4 flex flex-row items-center justify-end gap-2"
             >
                 <Button variant="destructive" @click="handleRemoveFile">
-                    <Trash2 class="w-4 h-4" />
+                    <Trash2 class="h-4 w-4" />
                 </Button>
 
-                <Button @click="handleOpenFile">
+                <Button class="flex-grow" @click="handleOpenFile">
                     Open
-                    <BookOpen class="w-4 h-4 mr-2" />
+                    <BookOpen class="ml-2 h-4 w-4" />
                 </Button>
             </DrawerFooter>
         </DrawerContent>

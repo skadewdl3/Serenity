@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { FileText, Book, File, ArrowLeft } from "lucide-vue-next";
-import FileDetailsDrawer from "./FileDetailsDrawer.vue";
+import { ref, onMounted, onUnmounted } from "vue";
+import { Book, File, ArrowLeft } from "lucide-vue-next";
+import FileDetailsDrawer from "@/components/FileDetailsDrawer.vue";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { Button } from "@/components/ui/button";
 import emitter, { type RecentFile as FileInfo } from "@/lib/events";
+import { useRouter } from "vue-router";
+import { useAppStore } from "@/stores/appStore";
 
 dayjs.extend(relativeTime);
 
@@ -13,10 +15,8 @@ const recentFiles = ref<FileInfo[]>([]);
 const selectedFile = ref<FileInfo | null>(null);
 const isDrawerOpen = ref(false);
 
-const emit = defineEmits<{
-    (e: "open-file", file: FileInfo): void;
-    (e: "back"): void;
-}>();
+const router = useRouter();
+const store = useAppStore();
 
 async function loadRecentFiles() {
     try {
@@ -35,7 +35,9 @@ async function loadRecentFiles() {
 }
 
 function openFile(file: FileInfo) {
-    emit("open-file", file);
+    store.openFile(file);
+    store.pushRoute('Viewer');
+    router.push({ name: 'Viewer' });
     isDrawerOpen.value = false;
 }
 
@@ -51,7 +53,16 @@ function handleFileClick(file: FileInfo) {
     isDrawerOpen.value = true;
 }
 
-onMounted(loadRecentFiles);
+
+
+onMounted(() => {
+    loadRecentFiles();
+    emitter.on('refreshRecents', loadRecentFiles);
+});
+
+onUnmounted(() => {
+    emitter.off('refreshRecents', loadRecentFiles);
+});
 
 const fileTypeToIcon = (fileType: string) => {
     if (fileType.startsWith("application/pdf")) {
@@ -73,54 +84,47 @@ function formatTimeAgo(timestamp?: number): string {
 
 <template>
     <div
-        class="w-full max-w-4xl mx-auto h-screen flex flex-col bg-white dark:bg-black"
+        class="w-full max-w-4xl mx-auto h-screen flex flex-col bg-background text-foreground"
     >
         <div
-            class="flex-shrink-0 px-2 py-4 mt-8 bg-white/90 dark:bg-black/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 z-10"
+            class="shrink-0 px-2 py-4 mt-8 bg-background/90 backdrop-blur-sm border-b border-border z-10"
         >
             <div class="flex items-center">
                 <Button
-                    @click="$emit('back')"
                     variant="ghost"
                     size="icon"
-                    class="mr-2"
+                    class="mr-2 hover:bg-accent"
+                    @click="emitter.emit('goBack')"
                 >
-                    <ArrowLeft class="h-6 w-6" />
+                    <ArrowLeft class="h-6 w-6 text-foreground" />
                 </Button>
-                <h1 class="text-2xl font-bold">Recents</h1>
+                <h1 class="text-2xl font-bold text-foreground">Recents</h1>
             </div>
         </div>
 
         <div class="overflow-y-auto px-6">
             <div
                 v-if="recentFiles.length === 0"
-                class="text-gray-500 text-center py-10"
+                class="py-10 text-center text-muted-foreground"
             >
                 No recent documents.
             </div>
-            <div
-                v-else
-                class="flex flex-col divide-y divide-gray-200 dark:divide-gray-800"
-            >
+            <div v-else class="flex flex-col divide-y divide-border">
                 <div
-                    v-for="file in [
-                        ...recentFiles,
-                        ...recentFiles,
-                        ...recentFiles,
-                    ]"
+                    v-for="file in recentFiles"
                     :key="file.path"
-                    class="py-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-4"
+                    class="flex cursor-pointer items-center gap-4 py-4 hover:bg-accent"
                     @click="() => handleFileClick(file)"
                 >
                     <component
                         :is="fileTypeToIcon(file.file_type)"
-                        class="w-10 h-10 text-gray-500 flex-shrink-0"
+                        class="h-10 w-10 flex-shrink-0 text-muted-foreground"
                     />
                     <div class="flex-grow truncate">
-                        <p class="text-sm font-medium truncate">
+                        <p class="truncate text-sm font-medium text-foreground">
                             {{ file.name }}
                         </p>
-                        <p class="text-xs text-gray-500">
+                        <p class="text-xs text-muted-foreground">
                             {{ formatTimeAgo(file.lastOpened) }}
                         </p>
                     </div>

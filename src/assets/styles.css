@@ -58,6 +58,7 @@
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
+
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
@@ -117,7 +118,88 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Vue Router Transitions - Stack-based Scale & Fade */
+
+/* Push transition: new route scales down from 1.05 to 1, old route scales to 0.95 */
+.scale-push-enter-active,
+.scale-push-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.scale-push-enter-active {
+  z-index: 2;
+}
+
+.scale-push-leave-active {
+  z-index: 1;
+}
+
+.scale-push-enter-from {
+  transform: scale(1.05);
+  opacity: 0;
+}
+
+.scale-push-enter-to {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.scale-push-leave-from {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.scale-push-leave-to {
+  transform: scale(0.95);
+  opacity: 0;
+}
+
+/* Pop transition: new route scales up from 0.95 to 1, old route scales to 1.05 */
+.scale-pop-enter-active,
+.scale-pop-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+
+.scale-pop-enter-active {
+  z-index: 1;
+}
+
+.scale-pop-leave-active {
+  z-index: 2;
+}
+
+.scale-pop-enter-from {
+  transform: scale(0.95);
+  opacity: 0;
+}
+
+.scale-pop-enter-to {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.scale-pop-leave-from {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.scale-pop-leave-to {
+  transform: scale(1.05);
+  opacity: 0;
+}
+
+.font-serif {
+  font-family: "Playfair Display", serif;
 }

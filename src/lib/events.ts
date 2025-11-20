@@ -27,8 +27,21 @@ type Events = {
   createRecentsEntry: RecentFile;
   editRecentsEntry: Partial<RecentFile> & { path: string };
   deleteRecentsEntry: string; // path
+  refreshRecents: void;
 };
 
 const emitter = mitt<Events>();
+
+export function setupGlobalHandlers(router: any, store: any) {
+  emitter.on("goBack", () => {
+    console.log("[Events] Global goBack received");
+    const targetRoute = store.handleBackButton();
+    console.log("[Events] Target route:", targetRoute);
+
+    if (targetRoute) {
+      router.push({ name: targetRoute });
+    }
+  });
+}
 
 export default emitter;
